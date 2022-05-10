@@ -116,6 +116,18 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             if not np.isnan(value):
                 self.log(name, value)
 
+        # Jona
+        # Compute val_loss
+        predictions     = self.forward(source_data,source_mask)
+        classifications = tuple(prediction[1] for prediction in predictions)
+        predictions     = tuple(prediction[0] for prediction in predictions)
+        total_loss, best_indices = self.negative_log_likelihood(predictions,classifications,targets)
+        permutations = self.event_permutation_tensor[best_indices].T
+        masks        = torch.stack([target[1] for target in targets])
+        masks        = torch.gather(masks, 0, permutations)
+        total_loss   = len(targets) * total_loss.sum() / masks.sum()
+        self.log("val_loss",total_loss)
+
         return metrics
 
     def validation_epoch_end(self, outputs):

@@ -12,7 +12,8 @@ def load_model(log_directory: str,
                testing_file: Optional[str] = None,
                event_info_file: Optional[str] = None,
                batch_size: Optional[int] = None,
-               cuda: bool = False) -> JetReconstructionModel:
+               cuda: bool = False,
+               num_workers: int = -1) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
     checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
     checkpoint = torch.load(checkpoint, map_location='cpu')
@@ -30,6 +31,10 @@ def load_model(log_directory: str,
 
     if batch_size is not None:
         options.batch_size = batch_size
+
+    # Jona
+    if num_workers != -1:
+        options.num_dataloader_workers = num_workers
 
     # We need a testing file defined somewhere to continue
     if options.testing_file is None or options.testing_file == "":
@@ -57,7 +62,6 @@ def predict_on_test_dataset(model: JetReconstructionModel, cuda: bool = False):
     for source_data, *targets in tqdm(model.test_dataloader(), desc="Evaluating Model"):
         if cuda:
             source_data = [x.cuda() for x in source_data]
-
         predictions, classifications = model.predict_jets_and_particles(*source_data)
 
         full_targets.append([x[0].numpy() for x in targets])

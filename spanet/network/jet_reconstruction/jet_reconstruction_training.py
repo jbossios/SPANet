@@ -31,12 +31,19 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                        for prediction, decoder in zip(predictions, self.decoders)]
 
         # Convert the targets into a numpy array of tensors so we can use fancy indexing from numpy
+        targets = [[tensor.cpu() for tensor in tensors] for tensors in targets] # Jona
         targets = np.array(targets, dtype='O')
+
+        # Jona
+        newclassifications = ()
+        for tensor in classifications: newclassifications += (tensor.cpu(),)
+        classifications = newclassifications
 
         # Compute the loss on every valid permutation of the targets
         # TODO think of a way to avoid this memory transfer but keep permutation indices synced with checkpoint
         losses = []
         for permutation in self.event_permutation_tensor.cpu().numpy():
+            predictions = [tensor.cpu() for tensor in predictions] # Jona
             loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
                          self.particle_classification_loss(C, M)
                          for P, C, (T, M)
@@ -125,6 +132,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         if self.balance_particles:
             class_indices = (masks * self.particle_index_tensor.unsqueeze(1)).sum(0)
             class_weights = self.particle_weights_tensor[class_indices]
+            class_weights = class_weights.cpu() # Jona
             total_loss = total_loss * class_weights
 
         # Balance based on the number of jets in this event

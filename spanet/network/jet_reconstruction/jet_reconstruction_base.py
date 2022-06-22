@@ -76,18 +76,36 @@ class JetReconstructionBase(pl.LightningModule):
         event_info_file = self.options.event_info_file
         training_file = self.options.training_file
         validation_file = self.options.validation_file
+        dataset_limit = self.options.dataset_limit
 
         training_range = 1.0
         validation_range = 1.0
+
+        # Optionally construct the testing dataset.
+        # This is not used in the main training script but is still useful for testing later.
+        testing_dataset = None
+        if len(self.options.testing_file) > 0:
+            if self.options.testing_file != 'GenerateMe':
+                testing_dataset = self.dataset(data_file=self.options.testing_file,
+                                               event_info=self.options.event_info_file,
+                                               limit_index=1.0,
+                                               jet_limit=self.options.limit_to_num_jets)
+            else:  # generate testing sample from training sample
+                dataset_limit *= 0.9  # use 90% of the training data for training/validating
+                testing_range = (dataset_limit, 1.0)
+                testing_dataset = self.dataset(data_file=training_file,
+                                               event_info=self.options.event_info_file,
+                                               limit_index=testing_range,
+                                               jet_limit=self.options.limit_to_num_jets)
 
         # If we dont have a validation file provided, create one from the training file.
         if len(validation_file) == 0:
             validation_file = training_file
 
             # Compute the training / validation ranges based on the data-split and the limiting percentage.
-            train_validation_split = self.options.dataset_limit * self.options.train_validation_split
+            train_validation_split = dataset_limit * self.options.train_validation_split
             training_range = (0.0, train_validation_split)
-            validation_range = (train_validation_split, self.options.dataset_limit)
+            validation_range = (train_validation_split, dataset_limit)
 
         # Construct primary training datasets
         # Note that only the training dataset might be limited to full events or partial events.
@@ -103,15 +121,6 @@ class JetReconstructionBase(pl.LightningModule):
                                           limit_index=validation_range,
                                           jet_limit=self.options.limit_to_num_jets,
                                           randomization_seed=self.options.dataset_randomization)
-
-        # Optionally construct the testing dataset.
-        # This is not used in the main training script but is still useful for testing later.
-        testing_dataset = None
-        if len(self.options.testing_file) > 0:
-            testing_dataset = self.dataset(data_file=self.options.testing_file,
-                                           event_info=self.options.event_info_file,
-                                           limit_index=1.0,
-                                           jet_limit=self.options.limit_to_num_jets)
 
         return training_dataset, validation_dataset, testing_dataset
 

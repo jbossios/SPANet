@@ -4,6 +4,7 @@ import numpy as np
 from glob import glob
 import sys
 import torch
+import h5py
 
 # spanet
 from spanet import Options
@@ -13,6 +14,11 @@ from spanet.dataset.event_info import EventInfo
 # from cannonball
 sys.path.append("/Users/anthonybadea/Documents/ATLAS/rpvmj/cannonball")
 from batcher import loadBranchAndPad
+
+# global variables
+import logging
+logging.basicConfig(format='%(levelname)s: %(message)s', level='INFO')
+log = logging.getLogger('evaluate')
 
 # load options
 log_directory = "version_96"
@@ -35,23 +41,20 @@ for param_tensor in model.state_dict():
 	ckpt[param_tensor] = checkpoint[param_tensor]
 model.load_state_dict(ckpt) # eventually just load the checkpoint normally
 
-# turn of gradients
-for parameter in model.parameters():
-    parameter.requires_grad_(False)
-
 # get data in format
-inFile = "../inputs/user.abadea.mc16_13TeV.364704.Pythia8EvtGen_A14NNPDF23LO_jetjet_JZ4WithSW.e7142_s3126_r9364_p5083.PROD3_trees.root/user.abadea.364704.e7142_e5984_s3126_r9364_r9315_p5083.29328273._000001.trees.root"
+inFile = "../inputs/user.abadea.mc16_13TeV.504518.MGPy8EG_A14NNPDF23LO_GG_rpv_UDB_1400_squarks.e8258_s3126_r10724_p5083.PROD1_trees.root/user.abadea.504518.e8258_e7400_s3126_r10724_r10726_p5083.29355473._000001.trees.root"
 treeName = "trees_SRRPV_"
 maxNjets = 8
 
 # load data
+NEVENTS = 2
 with uproot.open(inFile) as f:
 	tree = f[treeName]
 
 	# pick up kinematics
 	kinem = {}
 	for key in ["e","pt","eta","phi"]:
-		kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], maxNjets)[:2] # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
+		kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], maxNjets)[:NEVENTS] # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
 
 	# compute mass
 	kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
@@ -87,31 +90,44 @@ with uproot.open(inFile) as f:
 
 	print(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
-
-# evaluate
-model.eval()
-with torch.no_grad():
-
-	predictions, classifications = model.predict_jets_and_particles(source_data=source_data, source_mask=source_mask)
-	predictions = np.stack(predictions)
-	print(type(predictions), predictions.shape) 
-	print(predictions)
-	print(type(classifications), classifications.shape)
-	print(classifications)
-	
-	# convert to masses
+	# prepare four momenta to be used with predictions
 	mom = torch.stack([
 		kinem["e"],
 		kinem["px"],
 		kinem["py"],
 		kinem["pz"]
 	],-1)
-	mom = np.expand_dims(mom,1) # go to (nEvents,1,nJets,4-mom)
-	predictions = np.repeat(np.expand_dims(predictions,-1),mom.shape[-1],-1) # go to (nEvents, nGluinos, nGluinoChildre, 4-mom)
-	m = np.take_along_axis(mom,predictions,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
+
+# prepare output data dictionary
+outData = {}
+
+# evaluate
+model.eval()
+with torch.no_grad():
+
+	predictions, classifications = model.predict_jets_and_particles(source_data=source_data, source_mask=source_mask)
+	predictions = np.stack(predictions,1)
+	print(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
+
+	# get masses
+	mom_temp = np.expand_dims(mom,1) # go to (nEvents,1,nJets,4-mom)
+	predictions_temp = np.repeat(np.expand_dims(predictions,-1),mom.shape[-1],-1) # go to (nEvents, nGluinos, nGluinoChildre, 4-mom)
+	print(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
+	m = np.take_along_axis(mom_temp,predictions_temp,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
 	m = np.sqrt(m[:,:,0]**2 - m[:,:,1]**2 - m[:,:,2]**2 - m[:,:,3]**2) # compute mass
+	del mom_temp, predictions_temp
+	gc.collect()
 
-	# To-do: why does the mass keep changing on each evaluation?
-	print(m.shape)
-	print(m)
+	# save to dictionary
+	outData[treeName] = {"predictions" : predictions, "mass_pred" : m}
 
+# save
+outFileName = "test.h5"
+log.info(f"Saving to {outFileName}")
+with h5py.File(outFileName, 'w') as hf:
+    for key, val in outData.items():
+        Group = hf.create_group(key)
+        for k, v in val.items():
+            log.debug(f"    {key}/{k} {v.shape}")
+            Group.create_dataset(k,data=v)
+log.info("Done!")

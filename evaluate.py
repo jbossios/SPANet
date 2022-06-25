@@ -24,10 +24,6 @@ from spanet import Options
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 from spanet.dataset.event_info import EventInfo
 
-# from cannonball
-sys.path.append("/Users/anthonybadea/Documents/ATLAS/rpvmj/cannonball")
-from batcher import loadBranchAndPad
-
 # global variables
 import logging
 logging.basicConfig(format='%(levelname)s: %(message)s', level='INFO')
@@ -147,7 +143,6 @@ def evaluate(config):
     model.load_state_dict(ckpt) # eventually just load the checkpoint normally
 
     # evaluate
-    NEVENTS = 2
     outData = {}
     model.eval()
     with torch.no_grad():
@@ -235,5 +230,10 @@ def evaluate(config):
                 Group.create_dataset(k,data=v)
     log.info("Done!")
 
+def loadBranchAndPad(branch, maxNjets):
+    a = branch.array()
+    a = ak.to_numpy(ak.fill_none(ak.pad_none(a, max(maxNjets,np.max(ak.num(a)))),0))
+    return a
+    
 if __name__ == "__main__":
     main()

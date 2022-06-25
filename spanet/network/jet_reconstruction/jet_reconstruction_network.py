@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
+# from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
 from spanet.network.prediction_selection import extract_predictions
 from spanet.network.layers.branch_decoder import BranchDecoder
 from spanet.network.layers.jet_encoder import JetEncoder
@@ -13,7 +13,7 @@ from spanet.options import Options
 TArray = np.ndarray
 
 
-class JetReconstructionNetwork(JetReconstructionBase):
+class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase):
     def __init__(self, options: Options):
         """ Base class defining the SPANet architecture.
 
@@ -23,8 +23,11 @@ class JetReconstructionNetwork(JetReconstructionBase):
             Global options for the entire network.
             See network.options.Options
         """
-        super(JetReconstructionNetwork, self).__init__(options)
+        # super(JetReconstructionNetwork, self).__init__(options)
+        super().__init__()
 
+        self.options = options
+        
         self.hidden_dim = options.hidden_dim
 
         # Shared options for all transformer layers
@@ -34,14 +37,21 @@ class JetReconstructionNetwork(JetReconstructionBase):
                                options.dropout,
                                options.transformer_activation)
 
-        self.encoder = JetEncoder(options, self.training_dataset.num_features, transformer_options)
+        # self.encoder = JetEncoder(options, self.training_dataset.num_features, transformer_options)
+        # self.decoders = nn.ModuleList([
+        #     BranchDecoder(options, size, permutation_indices, transformer_options, self.enable_softmax)
+        #     for _, (size, permutation_indices) in self.training_dataset.target_symmetries
+        # ])
+
+
+        self.encoder = JetEncoder(options, options.num_features, transformer_options)
         self.decoders = nn.ModuleList([
             BranchDecoder(options, size, permutation_indices, transformer_options, self.enable_softmax)
-            for _, (size, permutation_indices) in self.training_dataset.target_symmetries
+            for _, (size, permutation_indices) in options.target_symmetries
         ])
 
         # An example input for generating the network's graph, batch size of 2
-        self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
+        # self.example_input_array = tuple(x.contiguous() for x in self.training_dataset[:2][0])
 
     @property
     def enable_softmax(self):
@@ -50,9 +60,9 @@ class JetReconstructionNetwork(JetReconstructionBase):
     def forward(self, source_data: Tensor, source_mask: Tensor) -> Tuple[Tuple[Tensor, Tensor], ...]:
         # Normalize incoming data
         # This operation is gradient-free, so we can use inplace operations.
-        source_data = source_data.clone()
-        source_data[source_mask] -= self.mean
-        source_data[source_mask] /= self.std
+        # source_data = source_data.clone()
+        # source_data[source_mask] -= self.mean
+        # source_data[source_mask] /= self.std
 
         # Extract features from data using transformer
         hidden, padding_mask, sequence_mask = self.encoder(source_data, source_mask)

@@ -15,6 +15,7 @@ import numpy as np
 from glob import glob
 import sys
 import h5py
+import awkward as ak
 
 # SOME HACK ON mac
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -145,6 +146,7 @@ def evaluate(config):
     # evaluate
     outData = {}
     model.eval()
+    NEVENTS = -1
     with torch.no_grad():
         for treeName in config["treeNames"]:
 

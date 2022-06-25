@@ -13,7 +13,7 @@ from spanet.options import Options
 TArray = np.ndarray
 
 
-class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase):
+class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase): # This will need to be uncommented for training to work I think
     def __init__(self, options: Options):
         """ Base class defining the SPANet architecture.
 
@@ -27,7 +27,7 @@ class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase):
         super().__init__()
 
         self.options = options
-        
+
         self.hidden_dim = options.hidden_dim
 
         # Shared options for all transformer layers

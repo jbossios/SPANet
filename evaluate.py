@@ -120,7 +120,7 @@ def evaluate(config):
     ops = options()
 
     # make output file name
-    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"])).replace(".root",f"_{config['tag']}_colalolaBinary.h5")
+    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"])).replace(".root",f"_{config['tag']}_spanet.h5")
     if os.path.isfile(outFileName) and not ops.doOverwrite:
         log.info(f"File already exists not evaluating on: {outFileName}")
         return
@@ -149,6 +149,7 @@ def evaluate(config):
     NEVENTS = -1
     with torch.no_grad():
         for treeName in config["treeNames"]:
+            log.info(f"Evaluationg {treeName}")
 
             # load data
             with uproot.open(config["inFileName"]) as f:
@@ -191,7 +192,7 @@ def evaluate(config):
                     source_data["phi"]
                 ],-1)
 
-                log.info(f"Source data {source_data.shape}, mask {source_mask.shape}")
+                log.debug(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
                 # prepare four momenta to be used with predictions
                 mom = torch.stack([
@@ -207,12 +208,12 @@ def evaluate(config):
             
             predictions, classifications = model.predict_jets_and_particles(source_data=source_data, source_mask=source_mask)
             predictions = np.stack(predictions,1)
-            log.info(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
+            log.debug(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
 
             # get masses
             mom_temp = np.expand_dims(mom,1) # go to (nEvents,1,nJets,4-mom)
             predictions_temp = np.repeat(np.expand_dims(predictions,-1),mom.shape[-1],-1) # go to (nEvents, nGluinos, nGluinoChildre, 4-mom)
-            log.info(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
+            log.debug(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
             m = np.take_along_axis(mom_temp,predictions_temp,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
             m = np.sqrt(m[:,:,0]**2 - m[:,:,1]**2 - m[:,:,2]**2 - m[:,:,3]**2) # compute mass
             del mom_temp, predictions_temp

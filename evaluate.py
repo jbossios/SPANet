@@ -146,7 +146,6 @@ def evaluate(config):
     # evaluate
     outData = {}
     model.eval()
-    NEVENTS = -1
     with torch.no_grad():
         for treeName in config["treeNames"]:
             log.info(f"Evaluationg {treeName}")
@@ -158,7 +157,7 @@ def evaluate(config):
                 # pick up kinematics
                 kinem = {}
                 for key in ["e","pt","eta","phi"]:
-                    kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets)[:NEVENTS] # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
+                    kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets) # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
 
                 # compute mass
                 kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])

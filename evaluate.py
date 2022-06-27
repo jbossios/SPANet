@@ -200,7 +200,7 @@ def evaluate(config):
                     if normalize: # only include nonzero elements in mean, std since 0 indicates padded
                         mean = float(getattr(model_options,f"{feature}_mean"))
                         std = float(getattr(model_options,f"{feature}_std"))
-                        print(mean,std)
+                        #print(mean,std)
                         source_data[feature] = (source_data[feature] - mean) / std * source_mask
 
                 # make input data
@@ -211,7 +211,7 @@ def evaluate(config):
                     source_data["phi"]
                 ],-1)
 
-                log.info(f"Source data {source_data.shape}, mask {source_mask.shape}")
+                log.debug(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
                 # prepare four momenta to be used with predictions
                 mom = torch.stack([
@@ -236,7 +236,7 @@ def evaluate(config):
             log.debug(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
             m = np.take_along_axis(mom_temp,predictions_temp,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
             m = np.sqrt(m[:,:,0]**2 - m[:,:,1]**2 - m[:,:,2]**2 - m[:,:,3]**2) # compute mass
-            print(m)
+            #print(m)
             del mom_temp, predictions_temp
             gc.collect()
 

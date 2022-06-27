@@ -129,7 +129,8 @@ def evaluate(config):
         return
 
     # Load the options that were used for this run and set the testing-dataset value
-    model_options = Options.load("test.json") #Options.load(f"{ops.log_directory}/options.json")
+    #model_options = Options.load("test.json") #Options.load(f"{ops.log_directory}/options.json")
+    model_options = Options.load(f"{ops.log_directory}/options.json")
     # get from event info
     event_info = EventInfo.read_from_ini(model_options.event_info_file)
     #model_options.target_symmetries = event_info.mapped_targets.items()
@@ -140,11 +141,12 @@ def evaluate(config):
 
     # Load the best-performing checkpoint on validation data
     checkpoint = torch.load(sorted(glob(f"{ops.log_directory}/checkpoints/epoch*"))[-1], map_location='cpu')["state_dict"]
+    model.load_state_dict(checkpoint)
     # hack while removing unused variables # TO:DO remove after training updated
-    ckpt = {}
-    for param_tensor in model.state_dict():
-        ckpt[param_tensor] = checkpoint[param_tensor]
-    model.load_state_dict(ckpt) # eventually just load the checkpoint normally
+    # ckpt = {}
+    # for param_tensor in model.state_dict():
+    #     ckpt[param_tensor] = checkpoint[param_tensor]
+    # model.load_state_dict(ckpt) # eventually just load the checkpoint normally
 
     # evaluate
     outData = {}
@@ -208,7 +210,7 @@ def evaluate(config):
                 log.info(f"File has no events after selections: {config['inFileName']}")
                 return
             
-            N = 2
+            N = source_data.shape[0]
             predictions, classifications = model.predict_jets_and_particles(source_data=source_data[:N], source_mask=source_mask[:N])
             predictions = np.stack(predictions,1)
             log.debug(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")

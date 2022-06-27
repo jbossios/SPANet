@@ -132,8 +132,8 @@ def evaluate(config):
     model_options = Options.load("test.json") #Options.load(f"{ops.log_directory}/options.json")
     # get from event info
     event_info = EventInfo.read_from_ini(model_options.event_info_file)
-    model_options.target_symmetries = event_info.mapped_targets.items()
-    model_options.num_features = event_info.num_features
+    #model_options.target_symmetries = event_info.mapped_targets.items()
+    #model_options.num_features = event_info.num_features
 
     # Create model and disable all training operations for speed
     model = JetReconstructionNetwork(model_options)
@@ -208,7 +208,8 @@ def evaluate(config):
                 log.info(f"File has no events after selections: {config['inFileName']}")
                 return
             
-            predictions, classifications = model.predict_jets_and_particles(source_data=source_data, source_mask=source_mask)
+            N = 2
+            predictions, classifications = model.predict_jets_and_particles(source_data=source_data[:N], source_mask=source_mask[:N])
             predictions = np.stack(predictions,1)
             log.debug(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
 

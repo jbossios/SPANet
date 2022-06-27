@@ -4,16 +4,17 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-# from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
+from spanet.network.jet_reconstruction.jet_reconstruction_base import JetReconstructionBase
 from spanet.network.prediction_selection import extract_predictions
 from spanet.network.layers.branch_decoder import BranchDecoder
 from spanet.network.layers.jet_encoder import JetEncoder
 from spanet.options import Options
+from spanet.dataset.event_info import EventInfo
 
 TArray = np.ndarray
 
-
-class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase): # This will need to be uncommented for training to work I think
+# torch.nn.Module):
+class JetReconstructionNetwork(JetReconstructionBase): # This will need to be uncommented for training to work I think
     def __init__(self, options: Options):
         """ Base class defining the SPANet architecture.
 
@@ -23,10 +24,13 @@ class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase): # This
             Global options for the entire network.
             See network.options.Options
         """
-        # super(JetReconstructionNetwork, self).__init__(options)
-        super().__init__()
+        super(JetReconstructionNetwork, self).__init__(options)
+        #super().__init__()
 
         self.options = options
+        event_info = EventInfo.read_from_ini(options.event_info_file)
+        self.target_symmetries = event_info.mapped_targets.items()
+        self.num_features = event_info.num_features
 
         self.hidden_dim = options.hidden_dim
 
@@ -44,10 +48,10 @@ class JetReconstructionNetwork(torch.nn.Module): #JetReconstructionBase): # This
         # ])
 
 
-        self.encoder = JetEncoder(options, options.num_features, transformer_options)
+        self.encoder = JetEncoder(options, self.num_features, transformer_options)
         self.decoders = nn.ModuleList([
             BranchDecoder(options, size, permutation_indices, transformer_options, self.enable_softmax)
-            for _, (size, permutation_indices) in options.target_symmetries
+            for _, (size, permutation_indices) in self.target_symmetries
         ])
 
         # An example input for generating the network's graph, batch size of 2

@@ -18,7 +18,7 @@ class JetReconstructionBase(pl.LightningModule):
         self.save_hyperparameters(options)
         self.options = options
 
-        # self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
+        self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
 
         # self.mean = 0
         # self.std = 1

@@ -2,7 +2,8 @@
 # python imports
 from argparse import ArgumentParser
 # from typing import Optional
-from os import getcwd, makedirs, environ
+import os
+# from os import getcwd, makedirs, environ
 import json
 import h5py
 import numpy as np
@@ -21,6 +22,8 @@ from spanet import Options
 from spanet.dataset.event_info import EventInfo
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 
+# global variables
+import logging
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -42,10 +45,13 @@ if __name__ == '__main__':
     parser.add_argument("--gpus", type=int, default=None, help="Override GPU count in hyperparameters.")
     ops = parser.parse_args()
 
+    # logger
+    logging.basicConfig(format='%(levelname)s: %(message)s', level='INFO')
+    log = logging.getLogger('evaluate')
 
     # Whether or not this script version is the master run or a worker
     master = True
-    if "NODE_RANK" in environ:
+    if "NODE_RANK" in os.environ:
         master = False
 
 
@@ -64,32 +70,32 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------------------
     options.verbose_output = ops.verbose
     if master and ops.verbose:
-        print(f"Verbose output activated.")
+        log.info(f"Verbose output activated.")
 
     if ops.full_events:
         if master:
-            print(f"Overriding: Only using full events")
+            log.info(f"Overriding: Only using full events")
         options.partial_events = False
         options.balance_particles = False
 
     if ops.gpus is not None:
         if master:
-            print(f"Overriding GPU count: {ops.gpus}")
+            log.info(f"Overriding GPU count: {ops.gpus}")
         options.num_gpu = ops.gpus
-    print(options.num_gpu)
+
     if ops.batch_size is not None:
         if master:
-            print(f"Overriding Batch Size: {ops.batch_size}")
+            log.info(f"Overriding Batch Size: {ops.batch_size}")
         options.batch_size = ops.batch_size
 
     if ops.limit_dataset is not None:
         if master:
-            print(f"Overriding Dataset Limit: {ops.limit_dataset}%")
+            log.info(f"Overriding Dataset Limit: {ops.limit_dataset}%")
         options.dataset_limit = ops.limit_dataset / 100
 
     if ops.epochs is not None:
         if master:
-            print(f"Overriding Number of Epochs: {ops.epochs}")
+            log.info(f"Overriding Number of Epochs: {ops.epochs}")
         options.epochs = ops.epochs
 
     if ops.random_seed > 0:
@@ -126,7 +132,7 @@ if __name__ == '__main__':
             source_data.append(temp)
         # stack data
         source_data = torch.stack(source_data,-1)
-        print(f"Source data {source_data.shape}, mask {source_mask.shape}")
+        log.info(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
         # load targets
         num_events = source_data.shape[0]
@@ -134,18 +140,18 @@ if __name__ == '__main__':
         target_mask = []
         target_data = []
         for target, (jets, _) in event_info.targets.items():
-            print(target, jets, _)
+            log.debug(f"{target}, {jets}, {_}")
             target_mask.append(torch.from_numpy(np.array(hdf5_file[f"{target}/mask"])))            
             for index, jet in enumerate(jets):
                 target_data.append(torch.from_numpy(np.array(hdf5_file[f"{target}/{jet}"])))
         target_mask = torch.stack(target_mask,-1)
         target_data = torch.stack(target_data,-1)
-        print(target_mask.shape, target_data.shape)
+        log.info(f"Target data {target_data.shape}, mask {target_mask.shape}")
 
         source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data, source_mask, target_data, target_mask, test_size=0.25, shuffle=True)
                 
         # print shapes
-        print(source_data_train.shape, source_data_test.shape, source_mask_train.shape, source_mask_test.shape, target_data_train.shape, target_data_test.shape, target_mask_train.shape, target_mask_test.shape)
+        log.debug(f"(Train, Test): source data ({source_data_train.shape}, {source_data_test.shape}), source mask ({source_mask_train.shape}, {source_mask_test.shape}), target data ({target_data_train.shape}, {target_data_test.shape}), target mask ({target_mask_train.shape}, {target_mask_test.shape})")
     
     dataloader_settings = {
         "batch_size": options.batch_size,
@@ -178,7 +184,7 @@ if __name__ == '__main__':
     # distributed_backend = 'ddp' if options.num_gpu > 1 else None
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
-    log_dir = getcwd() if ops.log_dir is None else ops.log_dir
+    log_dir = os.getcwd() if ops.log_dir is None else ops.log_dir
     logger = TensorBoardLogger(save_dir=log_dir, name=ops.name, log_graph=ops.graph)
 
     # callbacks
@@ -203,9 +209,12 @@ if __name__ == '__main__':
 
     # Save the current hyperparameters to a json file in the checkpoint directory
     if master:
-        print(f"Training Version {trainer.logger.version}")
-        makedirs(trainer.logger.log_dir, exist_ok=True)
+        log.info(f"Training Version {trainer.logger.version}")
+        os.makedirs(trainer.logger.log_dir, exist_ok=True)
         with open(trainer.logger.log_dir + "/options.json", 'w') as json_file:
             json.dump(options.__dict__, json_file, indent=4)
 
     trainer.fit(model, train_dataloader, val_dataloader)
+
+    # save model
+    trainer.save_checkpoint(os.path.join(logger.root_dir,f"version_{logger.version}","finalWeights.ckpt"))

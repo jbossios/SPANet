@@ -93,6 +93,7 @@ def options():
     parser.add_argument("-j", "--ncpu", help="Number of cores to use for multiprocessing. If not provided multiprocessing not done.", default=1, type=int)
     parser.add_argument("-l", "--log_directory", help="Pretrained weights to evaluate with.", default=None, required=True)
     parser.add_argument('-v', "--version", default="0", help="Production version")
+    parser.add_argument('--minJetPt', default=50, type=int, help="Minimum selected jet pt")
     parser.add_argument('--maxNjets', default=8, type=int, help="Maximum number of leading jets retained in h5 files")
     parser.add_argument('--doSystematics', action="store_true", help="Create h5 files for systematic trees.")
     parser.add_argument('--doOverwrite', action="store_true", help="Overwrite already existing files.")
@@ -112,6 +113,9 @@ def handleInput(data):
         from glob import glob
         return sorted(glob(data))
     return []
+
+def append_jet_selection(original, new):
+    return np.concatenate([original, np.expand_dims(np.logical_and(original[:,:,-1],new),-1)],-1)
 
 def evaluate(config):
     ''' perform the full model evaluation '''
@@ -159,24 +163,21 @@ def evaluate(config):
                 for key in ["e","pt","eta","phi"]:
                     kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets) # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
                 
-                # make jet selections (zero out jets that fail)
-                def append_jet_selection(original, new):
-                    return np.concatenate([original, np.expand_dims(np.logical_and(original[:,:,-1],new),-1)],-1)
-                def append_event_selection(original, new):
-                    return np.concatenate([original, np.expand_dims(np.logical_and(original[:,-1],new),-1)],-1)
+                # def append_event_selection(original, new):
+                #     return np.concatenate([original, np.expand_dims(np.logical_and(original[:,-1],new),-1)],-1)
                 jet_selection = np.expand_dims(np.ones(kinem["pt"].shape),-1)
-                jet_selection = append_jet_selection(jet_selection, kinem["pt"] >= 50) # minJetPt
+                jet_selection = append_jet_selection(jet_selection, kinem["pt"] >= ops.minJetPt)
                 # apply final jet selection
                 jet_selection = jet_selection.astype(bool)
                 for key in kinem.keys():
                     kinem[key][~jet_selection[:,:,-1]] = 0
                 # # apply final event selection
-                event_selection = np.expand_dims(np.ones(kinem["pt"].shape[0]),-1)
-                event_selection = append_event_selection(event_selection, np.count_nonzero(kinem["pt"],1) >= 6) # minNjets
-                event_selection = append_event_selection(event_selection, np.array(tree["DFCommonJets_eventClean_LooseBad"]))
-                event_selection = append_event_selection(event_selection, np.array(tree["nBaselineElectrons"]) == 0)
-                event_selection = append_event_selection(event_selection, np.array(tree["nBaselineMuons"]) == 0)
-                event_selection = event_selection.astype(bool)
+                # event_selection = np.expand_dims(np.ones(kinem["pt"].shape[0]),-1)
+                # event_selection = append_event_selection(event_selection, np.count_nonzero(kinem["pt"],1) >= 6) # minNjets
+                # event_selection = append_event_selection(event_selection, np.array(tree["DFCommonJets_eventClean_LooseBad"]))
+                # event_selection = append_event_selection(event_selection, np.array(tree["nBaselineElectrons"]) == 0)
+                # event_selection = append_event_selection(event_selection, np.array(tree["nBaselineMuons"]) == 0)
+                # event_selection = event_selection.astype(bool)
 
                 # compute mass
                 kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
@@ -197,7 +198,7 @@ def evaluate(config):
                 for index, (feature, normalize, log_transform) in enumerate(event_info.source_features):
                     if log_transform:
                         source_data[feature] = torch.log(torch.clamp(source_data[feature], min=1e-6)) * source_mask
-                    if normalize: # only include nonzero elements in mean, std since 0 indicates padded
+                    if normalize:
                         mean = float(getattr(model_options,f"{feature}_mean"))
                         std = float(getattr(model_options,f"{feature}_std"))
                         #print(mean,std)
@@ -241,7 +242,7 @@ def evaluate(config):
             gc.collect()
 
             # save to dictionary
-            outData[treeName] = {"predictions" : predictions, "mass_pred" : m, "event_selection" : event_selection[:,-1]}
+            outData[treeName] = {"predictions" : predictions, "mass_pred" : m} #, "event_selection" : event_selection[:,-1]}
     
     # save options
     model_options.target_symmetries = str(model_options.target_symmetries)

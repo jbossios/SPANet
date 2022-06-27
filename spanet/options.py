@@ -129,7 +129,7 @@ class Options(Namespace):
 
         # The optimizer to use for trianing the network.
         # This must be a valid class in torch.optim or nvidia apex with 'apex' prefix.
-        self.optimizer: str = "apex_lamb"
+        self.optimizer: str = "AdamW"
 
         # Optimizer learning rate.
         self.learning_rate: float = 0.001

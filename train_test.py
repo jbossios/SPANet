@@ -1,20 +1,26 @@
+
+# python imports
 from argparse import ArgumentParser
-from typing import Optional
+# from typing import Optional
 from os import getcwd, makedirs, environ
 import json
 import h5py
 import numpy as np
 from sklearn.model_selection import train_test_split
+import gc
 
+# pytorch imports
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelSummary, EarlyStopping, ModelCheckpoint, LearningRateMonitor
 
-from spanet import JetReconstructionModel, Options
-from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
-from collections import OrderedDict
+# spanet imports
+from spanet import Options
 from spanet.dataset.event_info import EventInfo
+from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -68,22 +74,22 @@ if __name__ == '__main__':
 
     if ops.gpus is not None:
         if master:
-            print(f"Overriding GPU count: {gpus}")
+            print(f"Overriding GPU count: {ops.gpus}")
         options.num_gpu = ops.gpus
-
+    print(options.num_gpu)
     if ops.batch_size is not None:
         if master:
-            print(f"Overriding Batch Size: {batch_size}")
+            print(f"Overriding Batch Size: {ops.batch_size}")
         options.batch_size = ops.batch_size
 
     if ops.limit_dataset is not None:
         if master:
-            print(f"Overriding Dataset Limit: {limit_dataset}%")
+            print(f"Overriding Dataset Limit: {ops.limit_dataset}%")
         options.dataset_limit = ops.limit_dataset / 100
 
     if ops.epochs is not None:
         if master:
-            print(f"Overriding Number of Epochs: {epochs}")
+            print(f"Overriding Number of Epochs: {ops.epochs}")
         options.epochs = ops.epochs
 
     if ops.random_seed > 0:
@@ -92,8 +98,8 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------------------
     # Print the full hyperparameter list
     # -------------------------------------------------------------------------------------------------------
-    if master:
-        options.display()
+    # if master:
+        # options.display()
 
     # -------------------------------------------------------------------------------------------------------
     # Load the data
@@ -136,8 +142,70 @@ if __name__ == '__main__':
         target_data = torch.stack(target_data,-1)
         print(target_mask.shape, target_data.shape)
 
-        source_data_train, source_data_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data, target_data, target_mask, test_size=0.25, shuffle=True)
+        source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data, source_mask, target_data, target_mask, test_size=0.25, shuffle=True)
                 
         # print shapes
-        print(source_data_train.shape, source_data_test.shape, target_data_train.shape, target_data_test.shape, target_mask_train.shape, target_mask_test.shape)
-        
+        print(source_data_train.shape, source_data_test.shape, source_mask_train.shape, source_mask_test.shape, target_data_train.shape, target_data_test.shape, target_mask_train.shape, target_mask_test.shape)
+    
+    dataloader_settings = {
+        "batch_size": options.batch_size,
+        "pin_memory": options.num_gpu > 0,
+        "num_workers": options.num_dataloader_workers,
+        "prefetch_factor": 2,
+        "shuffle" : False
+    }
+    train_dataloader = DataLoader(TensorDataset(source_data_train, source_mask_train, target_data_train, target_mask_train), **dataloader_settings)
+    val_dataloader   = DataLoader(TensorDataset(source_data_test,  source_mask_test,  target_data_test,  target_mask_test), **dataloader_settings)
+
+    # set options
+    setattr(options, "steps_per_epoch", source_data_train.shape[0] // options.batch_size)
+    setattr(options, "total_steps", options.steps_per_epoch * options.epochs)
+    setattr(options, "warmup_steps", int(round(options.steps_per_epoch * options.learning_rate_warmup_epochs)))
+
+    # cleanup
+    del source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test, source_data, source_mask, target_data, target_mask
+    gc.collect()
+
+    # -------------------------------------------------------------------------------------------------------
+    # Begin the training loop
+    # -------------------------------------------------------------------------------------------------------
+
+    # Create the initial model on the CPU
+    model = JetReconstructionNetwork(options)
+
+    # If we are using more than one gpu, then switch to DDP training
+    distributed_backend = 'dp' if options.num_gpu > 1 else None
+    # distributed_backend = 'ddp' if options.num_gpu > 1 else None
+
+    # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
+    log_dir = getcwd() if ops.log_dir is None else ops.log_dir
+    logger = TensorBoardLogger(save_dir=log_dir, name=ops.name, log_graph=ops.graph)
+
+    # callbacks
+    callbacks = [
+        # ModelSummary(max_depth=-1),
+        EarlyStopping(monitor="val_loss", mode="min", min_delta=0.0, patience=10, verbose=True),
+        ModelCheckpoint(verbose=options.verbose_output, monitor="validation_accuracy", save_top_k=1, mode="max", save_last=True),
+        LearningRateMonitor()
+    ]
+
+    # Create the final pytorch-lightning manager
+    trainer = pl.Trainer(logger=logger,
+                         max_epochs=ops.epochs,
+                         callbacks=callbacks,
+                         resume_from_checkpoint=ops.checkpoint,
+                         # distributed_backend=distributed_backend,
+                         gpus=options.num_gpu if options.num_gpu > 0 else None,
+                         track_grad_norm=2 if options.verbose_output else -1,
+                         gradient_clip_val=options.gradient_clip,
+                         weights_summary='full' if options.verbose_output else 'top',
+                         precision=16 if ops.fp16 else 32)
+
+    # Save the current hyperparameters to a json file in the checkpoint directory
+    if master:
+        print(f"Training Version {trainer.logger.version}")
+        makedirs(trainer.logger.log_dir, exist_ok=True)
+        with open(trainer.logger.log_dir + "/options.json", 'w') as json_file:
+            json.dump(options.__dict__, json_file, indent=4)
+
+    trainer.fit(model, train_dataloader, val_dataloader)

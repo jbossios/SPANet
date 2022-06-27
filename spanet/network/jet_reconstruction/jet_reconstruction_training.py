@@ -9,6 +9,7 @@ from spanet.options import Options
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 from spanet.network.utilities.divergence_losses import jet_cross_entropy_loss, jensen_shannon_divergence
 
+from collections import OrderedDict
 
 class JetReconstructionTraining(JetReconstructionNetwork):
     def __init__(self, options: Options):
@@ -23,6 +24,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
     def negative_log_likelihood(self,
                                 predictions: Tuple[Tensor, ...],
                                 classifications: Tuple[Tensor, ...],
+                                # targets_data,
+                                # targets_mask) -> Tuple[Tensor, Tensor]:
                                 targets: Tuple[Tensor, ...]) -> Tuple[Tensor, Tensor]:
         # We are only going to look at a single prediction points on the distribution for more stable loss calculation
         # We multiply the softmax values by the size of the permutation group to make every target the same
@@ -44,11 +47,16 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         losses = []
         for permutation in self.event_permutation_tensor.cpu().numpy():
             predictions = [tensor.cpu() for tensor in predictions] # Jona
+            print(predictions)
+            # print(targets)
             loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
                          self.particle_classification_loss(C, M)
                          for P, C, (T, M)
                          in zip(predictions, classifications, targets[permutation]))
-
+            # loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
+            #              self.particle_classification_loss(C, M)
+            #              for P, C, T, M
+            #              in zip(predictions, classifications, targets_data[permutation], targets_mask[permutation]))
             losses.append(torch.sum(torch.stack(loss), dim=0))
 
         losses = torch.stack(losses)
@@ -83,7 +91,14 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         return sum(results) / len(self.training_dataset.unordered_event_transpositions)
 
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_nb: int) -> Dict[str, Tensor]:
-        (source_data, source_mask), *targets = batch
+        # (source_data, source_mask), *targets = batch
+        source_data, source_mask, target_data, target_mask = batch
+        # process  
+        source_data = source_data.float()
+        targets = [(target_data[:,:3], target_mask[:,0]),(target_data[:,3:], target_mask[:,1])]
+
+        # targets = target_data
+        print(self.event_permutation_tensor.cpu().numpy())
 
         # ===================================================================================================
         # Network Forward Pass
@@ -110,36 +125,36 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         masks = torch.stack([target[1] for target in targets])
         masks = torch.gather(masks, 0, permutations)
 
-        # ===================================================================================================
-        # Auxiliary loss term to prevent distributions from collapsing into single output.
-        # ---------------------------------------------------------------------------------------------------
-        if self.options.kl_loss_scale > 0:
-            # Compute the symmetric loss between all valid pairs of distributions.
-            kl_loss = self.symmetric_divergence(predictions, masks)
+        # # ===================================================================================================
+        # # Auxiliary loss term to prevent distributions from collapsing into single output.
+        # # ---------------------------------------------------------------------------------------------------
+        # if self.options.kl_loss_scale > 0:
+        #     # Compute the symmetric loss between all valid pairs of distributions.
+        #     kl_loss = self.symmetric_divergence(predictions, masks)
 
-            with torch.no_grad():
-                self.log("loss/symmetric_loss", -kl_loss.mean())
-                if torch.isnan(kl_loss).any():
-                    raise ValueError("Symmetric KL Loss has diverged.")
+        #     with torch.no_grad():
+        #         self.log("loss/symmetric_loss", -kl_loss.mean())
+        #         if torch.isnan(kl_loss).any():
+        #             raise ValueError("Symmetric KL Loss has diverged.")
 
-            total_loss = total_loss - kl_loss * self.options.kl_loss_scale
+        #     total_loss = total_loss - kl_loss * self.options.kl_loss_scale
 
-        # ===================================================================================================
-        # Balance the loss based on the distribution of various classes in the dataset.
-        # ---------------------------------------------------------------------------------------------------
+        # # ===================================================================================================
+        # # Balance the loss based on the distribution of various classes in the dataset.
+        # # ---------------------------------------------------------------------------------------------------
 
-        # Balance based on the particles present - only used in partial event training
-        if self.balance_particles:
-            class_indices = (masks * self.particle_index_tensor.unsqueeze(1)).sum(0)
-            class_weights = self.particle_weights_tensor[class_indices]
-            class_weights = class_weights.cpu() # Jona
-            total_loss = total_loss * class_weights
+        # # Balance based on the particles present - only used in partial event training
+        # if self.balance_particles:
+        #     class_indices = (masks * self.particle_index_tensor.unsqueeze(1)).sum(0)
+        #     class_weights = self.particle_weights_tensor[class_indices]
+        #     class_weights = class_weights.cpu() # Jona
+        #     total_loss = total_loss * class_weights
 
-        # Balance based on the number of jets in this event
-        if self.balance_jets:
-            class_indices = source_mask.sum(1)
-            class_weights = self.jet_weights_tensor[class_indices]
-            total_loss = total_loss * class_weights
+        # # Balance based on the number of jets in this event
+        # if self.balance_jets:
+        #     class_indices = source_mask.sum(1)
+        #     class_weights = self.jet_weights_tensor[class_indices]
+        #     total_loss = total_loss * class_weights
 
         # ===================================================================================================
         # Combine and return the loss

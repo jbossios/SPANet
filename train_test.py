@@ -2,6 +2,9 @@ from argparse import ArgumentParser
 from typing import Optional
 from os import getcwd, makedirs, environ
 import json
+import h5py
+import numpy as np
+from sklearn.model_selection import train_test_split
 
 import torch
 import pytorch_lightning as pl
@@ -43,48 +46,48 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------------------
     # Create options file and load any optional extra information.
     # -------------------------------------------------------------------------------------------------------
-    options = Options(event_file, training_file, validation_file)
+    options = Options(ops.event_file, ops.training_file, ops.validation_file)
 
-    if options_file is not None:
-        with open(options_file, 'r') as json_file:
+    if ops.options_file is not None:
+        with open(ops.options_file, 'r') as json_file:
             options.update_options(json.load(json_file))
 
 
     # -------------------------------------------------------------------------------------------------------
     # Command line overrides for common option values.
     # -------------------------------------------------------------------------------------------------------
-    options.verbose_output = verbose
-    if master and verbose:
+    options.verbose_output = ops.verbose
+    if master and ops.verbose:
         print(f"Verbose output activated.")
 
-    if full_events:
+    if ops.full_events:
         if master:
             print(f"Overriding: Only using full events")
         options.partial_events = False
         options.balance_particles = False
 
-    if gpus is not None:
+    if ops.gpus is not None:
         if master:
             print(f"Overriding GPU count: {gpus}")
-        options.num_gpu = gpus
+        options.num_gpu = ops.gpus
 
-    if batch_size is not None:
+    if ops.batch_size is not None:
         if master:
             print(f"Overriding Batch Size: {batch_size}")
-        options.batch_size = batch_size
+        options.batch_size = ops.batch_size
 
-    if limit_dataset is not None:
+    if ops.limit_dataset is not None:
         if master:
             print(f"Overriding Dataset Limit: {limit_dataset}%")
-        options.dataset_limit = limit_dataset / 100
+        options.dataset_limit = ops.limit_dataset / 100
 
-    if epochs is not None:
+    if ops.epochs is not None:
         if master:
             print(f"Overriding Number of Epochs: {epochs}")
-        options.epochs = epochs
+        options.epochs = ops.epochs
 
-    if random_seed > 0:
-        options.dataset_randomization = random_seed
+    if ops.random_seed > 0:
+        options.dataset_randomization = ops.random_seed
 
     # -------------------------------------------------------------------------------------------------------
     # Print the full hyperparameter list
@@ -100,12 +103,12 @@ if __name__ == '__main__':
 
     # load data if desired
     source_data = []
-    with h5py.File(training_file, "r") as hdf5_file:
+    with h5py.File(ops.training_file, "r") as hdf5_file:
         # get mask
-        source_mask = torch.from_numpy(hdf5_file["source/mask"])
+        source_mask = torch.from_numpy(np.array(hdf5_file["source/mask"]))
         # get features
         for index, (feature, normalize, log_transform) in enumerate(event_info.source_features):
-            temp = hdf5_file[f'source/{feature}']
+            temp = torch.from_numpy(np.array(hdf5_file[f'source/{feature}']))
             if log_transform:
                 temp = torch.log(torch.clamp(temp, min=1e-6)) * source_mask
             if normalize:
@@ -120,18 +123,21 @@ if __name__ == '__main__':
         print(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
         # load targets
-        targets = OrderedDict()
+        num_events = source_data.shape[0]
+
+        target_mask = []
+        target_data = []
         for target, (jets, _) in event_info.targets.items():
-            target_mask = torch.from_numpy(hdf5_file[f"{target}/mask"])
-            target_data = torch.empty(len(jets), self.num_events, dtype=torch.int64)
-
+            print(target, jets, _)
+            target_mask.append(torch.from_numpy(np.array(hdf5_file[f"{target}/mask"])))            
             for index, jet in enumerate(jets):
-                hdf5_file[f"{target}/{jet}"].read_direct(target_data[index].numpy())
+                target_data.append(torch.from_numpy(np.array(hdf5_file[f"{target}/{jet}"])))
+        target_mask = torch.stack(target_mask,-1)
+        target_data = torch.stack(target_data,-1)
+        print(target_mask.shape, target_data.shape)
 
-            target_data = target_data.transpose(0, 1)
-            target_data = target_data[limit_index]
-
-            targets[target] = (target_data, target_mask)
-
-        print(targets.keys())
-
+        source_data_train, source_data_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data, target_data, target_mask, test_size=0.25, shuffle=True)
+                
+        # print shapes
+        print(source_data_train.shape, source_data_test.shape, target_data_train.shape, target_data_test.shape, target_mask_train.shape, target_mask_test.shape)
+        

@@ -20,7 +20,6 @@ from spanet.network.utilities.divergence_losses import jet_cross_entropy_loss
 from spanet.dataset.evaluator import SymmetricEvaluator
 from spanet.network.learning_rate_schedules import get_linear_schedule_with_warmup, get_cosine_with_hard_restarts_schedule_with_warmup
 
-
 class JetReconstructionNetwork(pl.LightningModule):
     def __init__(self, options: Options):
         """ Base class defining the SPANet architecture.
@@ -118,7 +117,7 @@ class JetReconstructionNetwork(pl.LightningModule):
 
         # Convert the targets into a numpy array of tensors so we can use fancy indexing from numpy
         targets = [[tensor.cpu() for tensor in tensors] for tensors in targets] # Jona
-        targets = np.array(targets, dtype='O')
+        targets = np.array(targets, dtype='object')
 
         # Jona
         newclassifications = ()

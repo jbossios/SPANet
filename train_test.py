@@ -1,4 +1,7 @@
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 # python imports
 from argparse import ArgumentParser
 # from typing import Optional
@@ -148,7 +151,8 @@ if __name__ == '__main__':
         target_data = torch.stack(target_data,-1)
         log.info(f"Target data {target_data.shape}, mask {target_mask.shape}")
 
-        source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data, source_mask, target_data, target_mask, test_size=0.25, shuffle=True)
+        N = source_data.shape[0]
+        source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test = train_test_split(source_data[:N], source_mask[:N], target_data[:N], target_mask[:N], test_size=0.25, shuffle=True)
                 
         # print shapes
         log.debug(f"(Train, Test): source data ({source_data_train.shape}, {source_data_test.shape}), source mask ({source_mask_train.shape}, {source_mask_test.shape}), target data ({target_data_train.shape}, {target_data_test.shape}), target mask ({target_mask_train.shape}, {target_mask_test.shape})")

@@ -130,7 +130,7 @@ if __name__ == '__main__':
                 mean = temp[source_mask].mean()
                 std = temp[source_mask].std()
                 setattr(options,f"{feature}_mean", str(float(mean)))
-                setattr(options,f"{feature}_mean", str(float(std)))
+                setattr(options,f"{feature}_std", str(float(std)))
                 temp[source_mask] = (temp[source_mask] - mean) / std
             source_data.append(temp)
         # stack data

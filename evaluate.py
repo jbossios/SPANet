@@ -70,7 +70,7 @@ def main():
     for inFileName in input_files:
         
         # create outfile tag
-        tag = f"maxNjets{ops.maxNjets}_v{ops.version}"
+        tag = f"minJetPt{ops.minJetPt}_maxNjets{ops.maxNjets}_v{ops.version}"
         config.append({
             "inFileName" : inFileName,
             "treeNames" : treeNames,
@@ -110,7 +110,6 @@ def handleInput(data):
     elif os.path.isdir(data):
         return sorted(os.listdir(data))
     elif "*" in data:
-        from glob import glob
         return sorted(glob(data))
     return []
 
@@ -141,7 +140,7 @@ def evaluate(config):
 
     # Load the best-performing checkpoint on validation data
     checkpoint = torch.load(sorted(glob(f"{ops.log_directory}/checkpoints/epoch*"))[-1], map_location='cpu')["state_dict"]
-    # hack while removing unused variables
+    # hack while removing unused variables # TO:DO remove after training updated
     ckpt = {}
     for param_tensor in model.state_dict():
         ckpt[param_tensor] = checkpoint[param_tensor]
@@ -163,21 +162,12 @@ def evaluate(config):
                 for key in ["e","pt","eta","phi"]:
                     kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets) # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
                 
-                # def append_event_selection(original, new):
-                #     return np.concatenate([original, np.expand_dims(np.logical_and(original[:,-1],new),-1)],-1)
                 jet_selection = np.expand_dims(np.ones(kinem["pt"].shape),-1)
                 jet_selection = append_jet_selection(jet_selection, kinem["pt"] >= ops.minJetPt)
                 # apply final jet selection
                 jet_selection = jet_selection.astype(bool)
                 for key in kinem.keys():
                     kinem[key][~jet_selection[:,:,-1]] = 0
-                # # apply final event selection
-                # event_selection = np.expand_dims(np.ones(kinem["pt"].shape[0]),-1)
-                # event_selection = append_event_selection(event_selection, np.count_nonzero(kinem["pt"],1) >= 6) # minNjets
-                # event_selection = append_event_selection(event_selection, np.array(tree["DFCommonJets_eventClean_LooseBad"]))
-                # event_selection = append_event_selection(event_selection, np.array(tree["nBaselineElectrons"]) == 0)
-                # event_selection = append_event_selection(event_selection, np.array(tree["nBaselineMuons"]) == 0)
-                # event_selection = event_selection.astype(bool)
 
                 # compute mass
                 kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
@@ -190,44 +180,35 @@ def evaluate(config):
                 for key, val in kinem.items():
                     kinem[key] = torch.Tensor(val)
 
-                # construct sort
+                # construct source
                 source_mask = (kinem["pt"] != 0).bool()
-                source_data = {key : kinem[key] for key in ["mass","pt","eta","phi"]} # copy in order to normalize before evaluation
+                source_data = {}
+                features = []
 
                 # log data if desired
                 for index, (feature, normalize, log_transform) in enumerate(event_info.source_features):
+                    source_data[feature] = kinem[feature]
+                    features.append(feature)
                     if log_transform:
                         source_data[feature] = torch.log(torch.clamp(source_data[feature], min=1e-6)) * source_mask
                     if normalize:
                         mean = float(getattr(model_options,f"{feature}_mean"))
                         std = float(getattr(model_options,f"{feature}_std"))
-                        #print(mean,std)
+                        log.debug(f"{feature} mean {mean}, std {std}")
                         source_data[feature] = (source_data[feature] - mean) / std * source_mask
 
                 # make input data
-                source_data = torch.stack([
-                    source_data["mass"],
-                    source_data["pt"],
-                    source_data["eta"],
-                    source_data["phi"]
-                ],-1)
-
+                source_data = torch.stack([source_data[feature] for feature in features],-1)
                 log.debug(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
                 # prepare four momenta to be used with predictions
-                mom = torch.stack([
-                    kinem["e"],
-                    kinem["px"],
-                    kinem["py"],
-                    kinem["pz"]
-                ],-1)
+                mom = torch.stack([kinem[key] for key in ["e","px","py","pz"]],-1)
 
             if source_data.shape[0] == 0:
                 log.info(f"File has no events after selections: {config['inFileName']}")
                 return
             
-            N = source_data.shape[0]
-            predictions, classifications = model.predict_jets_and_particles(source_data=source_data[:N], source_mask=source_mask[:N])
+            predictions, classifications = model.predict_jets_and_particles(source_data=source_data, source_mask=source_mask)
             predictions = np.stack(predictions,1)
             log.debug(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
 
@@ -237,16 +218,15 @@ def evaluate(config):
             log.debug(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
             m = np.take_along_axis(mom_temp,predictions_temp,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
             m = np.sqrt(m[:,:,0]**2 - m[:,:,1]**2 - m[:,:,2]**2 - m[:,:,3]**2) # compute mass
-            #print(m)
             del mom_temp, predictions_temp
             gc.collect()
 
             # save to dictionary
-            outData[treeName] = {"predictions" : predictions, "mass_pred" : m} #, "event_selection" : event_selection[:,-1]}
+            outData[treeName] = {"predictions" : predictions, "mass_pred" : m}
     
-    # save options
-    model_options.target_symmetries = str(model_options.target_symmetries)
-    model_options.save("test.json")
+    # save options # TO-DO: remove after training updated
+    #model_options.target_symmetries = str(model_options.target_symmetries)
+    #model_options.save("test.json")
 
     # save final file
     log.info(f"Saving to {outFileName}")

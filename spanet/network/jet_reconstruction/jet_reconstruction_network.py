@@ -80,8 +80,11 @@ class JetReconstructionNetwork(JetReconstructionBase):
                 predictions.append(prediction)
 
                 scores.append(torch.sigmoid(classification).cpu().numpy())
-
-            return extract_predictions(predictions), np.stack(scores)
+            scores = np.stack(scores)
+            # protect against batch size of 1
+            if len(scores.shape) == 1:
+                scores = np.expand_dims(scores,-1)
+            return extract_predictions(predictions), scores
 
     def predict_jets_and_particles(self, source_data: Tensor, source_mask: Tensor) -> Tuple[TArray, TArray]:
         predictions, scores = self.predict_jets_and_particle_scores(source_data, source_mask)

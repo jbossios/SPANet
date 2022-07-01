@@ -71,7 +71,7 @@ class BranchDecoder(nn.Module):
         # =========================================================================================
         # Padding mask
         # =========================================================================================
-        padding_mask_operands = [batch_sequence_mask.squeeze()] * self.order
+        padding_mask_operands = [batch_sequence_mask.squeeze(dim=-1)] * self.order
         padding_mask = self.padding_mask_operation(*padding_mask_operands, backend='torch')
 
         # =========================================================================================

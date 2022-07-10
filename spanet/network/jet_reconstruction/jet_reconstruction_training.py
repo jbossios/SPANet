@@ -47,7 +47,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                          self.particle_classification_loss(C, M)
                          for P, C, (T, M)
                          in zip(predictions, classifications, targets[permutation]))
-            
+
             losses.append(torch.sum(torch.stack(loss), dim=0))
 
         losses = torch.stack(losses)

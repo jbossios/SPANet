@@ -22,8 +22,6 @@ class JetReconstructionTraining(JetReconstructionNetwork):
     def negative_log_likelihood(self,
                                 predictions: Tuple[Tensor, ...],
                                 classifications: Tuple[Tensor, ...],
-                                targets_data,
-                                targets_mask,
                                 targets: Tuple[Tensor, ...]) -> Tuple[Tensor, Tensor]:
         # We are only going to look at a single prediction points on the distribution for more stable loss calculation
         # We multiply the softmax values by the size of the permutation group to make every target the same
@@ -45,7 +43,6 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         losses = []
         for permutation in self.event_permutation_tensor.cpu().numpy():
             predictions = [tensor.cpu() for tensor in predictions] # Jona
-
             loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
                          self.particle_classification_loss(C, M)
                          for P, C, (T, M)

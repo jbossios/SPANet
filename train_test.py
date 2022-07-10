@@ -44,6 +44,7 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--full_events", action='store_true', help="Limit training to only full events.")
     parser.add_argument("-p", "--limit_dataset", type=int, default=None, help="Limit dataset to only the first L percent of the data (0 - 100).")
     parser.add_argument("-r", "--random_seed", type=int, default=0, help="Set random seed for cross-validation.")
+    parser.add_argument("-lr", "--learning_rate", help="Learning rate", default=10**-3, type=float)
     parser.add_argument("--epochs", type=int, default=None, help="Override number of epochs to train for")
     parser.add_argument("--gpus", type=int, default=None, help="Override GPU count in hyperparameters.")
     ops = parser.parse_args()
@@ -103,12 +104,8 @@ if __name__ == '__main__':
 
     if ops.random_seed > 0:
         options.dataset_randomization = ops.random_seed
-
-    # -------------------------------------------------------------------------------------------------------
-    # Print the full hyperparameter list
-    # -------------------------------------------------------------------------------------------------------
-    # if master:
-        # options.display()
+        
+    options.learning_rate = ops.learning_rate
 
     # -------------------------------------------------------------------------------------------------------
     # Load the data
@@ -130,7 +127,7 @@ if __name__ == '__main__':
                 mean = temp[source_mask].mean()
                 std = temp[source_mask].std()
                 setattr(options,f"{feature}_mean", str(float(mean)))
-                setattr(options,f"{feature}_mean", str(float(std)))
+                setattr(options,f"{feature}_std", str(float(std)))
                 temp[source_mask] = (temp[source_mask] - mean) / std
             source_data.append(temp)
         # stack data
@@ -175,6 +172,12 @@ if __name__ == '__main__':
     # cleanup
     del source_data_train, source_data_test, source_mask_train, source_mask_test, target_data_train, target_data_test, target_mask_train, target_mask_test, source_data, source_mask, target_data, target_mask
     gc.collect()
+    
+    # -------------------------------------------------------------------------------------------------------
+    # Print the full hyperparameter list
+    # -------------------------------------------------------------------------------------------------------
+    if master:
+        options.display()
 
     # -------------------------------------------------------------------------------------------------------
     # Begin the training loop

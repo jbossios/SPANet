@@ -20,29 +20,29 @@ class JetReconstructionBase(pl.LightningModule):
 
         self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
 
-        # self.mean = 0
-        # self.std = 1
+        self.mean = 0
+        self.std = 1
 
         # Normalize datasets using training dataset statistics
-        # if self.options.normalize_features:
-        #     self.mean, self.std = self.training_dataset.compute_statistics()
-        #     self.mean = torch.nn.Parameter(self.mean, requires_grad=False)
-        #     self.std = torch.nn.Parameter(self.std, requires_grad=False)
+        if self.options.normalize_features:
+            self.mean, self.std = self.training_dataset.compute_statistics()
+            self.mean = torch.nn.Parameter(self.mean, requires_grad=False)
+            self.std = torch.nn.Parameter(self.std, requires_grad=False)
 
         # Compute class weights for particles from the training dataset target distribution
-        # self.balance_particles = False
-        # if options.balance_particles and options.partial_events:
-        #     index_tensor, weights_tensor = self.training_dataset.compute_particle_balance()
-        #     self.particle_index_tensor = torch.nn.Parameter(index_tensor, requires_grad=False)
-        #     self.particle_weights_tensor = torch.nn.Parameter(weights_tensor, requires_grad=False)
-        #     self.balance_particles = True
+        self.balance_particles = False
+        if options.balance_particles and options.partial_events:
+            index_tensor, weights_tensor = self.training_dataset.compute_particle_balance()
+            self.particle_index_tensor = torch.nn.Parameter(index_tensor, requires_grad=False)
+            self.particle_weights_tensor = torch.nn.Parameter(weights_tensor, requires_grad=False)
+            self.balance_particles = True
 
         # Compute class weights for jets from the training dataset target distribution
-        # self.balance_jets = False
-        # if options.balance_jets:
-        #     jet_weights_tensor = self.training_dataset.compute_jet_balance()
-        #     self.jet_weights_tensor = torch.nn.Parameter(jet_weights_tensor, requires_grad=False)
-        #     self.balance_jets = True
+        self.balance_jets = False
+        if options.balance_jets:
+            jet_weights_tensor = self.training_dataset.compute_jet_balance()
+            self.jet_weights_tensor = torch.nn.Parameter(jet_weights_tensor, requires_grad=False)
+            self.balance_jets = True
 
         # Helper arrays for permutation groups. Used for the partial-event loss functions.
         event_permutation_group = np.array(self.training_dataset.event_permutation_group)

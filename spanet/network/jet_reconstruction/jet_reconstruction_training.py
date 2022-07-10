@@ -9,6 +9,7 @@ from spanet.options import Options
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
 from spanet.network.utilities.divergence_losses import jet_cross_entropy_loss, jensen_shannon_divergence
 
+
 class JetReconstructionTraining(JetReconstructionNetwork):
     def __init__(self, options: Options):
         super(JetReconstructionTraining, self).__init__(options)

@@ -106,7 +106,8 @@ if __name__ == '__main__':
         options.dataset_randomization = ops.random_seed
         
     options.learning_rate = ops.learning_rate
-
+    options.optimizer = "AdamW"
+    
     # -------------------------------------------------------------------------------------------------------
     # Load the data
     # -------------------------------------------------------------------------------------------------------

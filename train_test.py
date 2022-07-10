@@ -4,9 +4,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # python imports
 from argparse import ArgumentParser
-# from typing import Optional
 import os
-# from os import getcwd, makedirs, environ
 import json
 import h5py
 import numpy as np
@@ -107,7 +105,7 @@ if __name__ == '__main__':
         
     options.learning_rate = ops.learning_rate
     options.optimizer = "AdamW"
-    
+
     # -------------------------------------------------------------------------------------------------------
     # Load the data
     # -------------------------------------------------------------------------------------------------------

@@ -37,6 +37,7 @@ class JetReconstructionNetwork(pl.LightningModule):
 
         self.options = options
         event_info = EventInfo.read_from_ini(options.event_info_file)
+        self.num_children = len(event_info.targets[event_info.event_particles[0]][0]) # NOTE: for more complicated decays you may need to update this line and propagate the changes. This current assumes symmetric pair production.
         self.target_symmetries = event_info.mapped_targets.items()
         self.num_features = event_info.num_features
         self.hidden_dim = options.hidden_dim
@@ -129,16 +130,10 @@ class JetReconstructionNetwork(pl.LightningModule):
         losses = []
         for permutation in self.event_permutation_tensor.cpu().numpy():
             predictions = [tensor.cpu() for tensor in predictions] # Jona
-            # print(predictions)
-            # print(targets)
             loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
                          self.particle_classification_loss(C, M)
                          for P, C, (T, M)
                          in zip(predictions, classifications, targets[permutation]))
-            # loss = tuple(jet_cross_entropy_loss(P, T, M, self.options.focal_gamma) +
-            #              self.particle_classification_loss(C, M)
-            #              for P, C, T, M
-            #              in zip(predictions, classifications, targets_data[permutation], targets_mask[permutation]))
             losses.append(torch.sum(torch.stack(loss), dim=0))
 
         losses = torch.stack(losses)
@@ -163,7 +158,7 @@ class JetReconstructionNetwork(pl.LightningModule):
         source_data, source_mask, target_data, target_mask = batch
         # process  
         source_data = source_data.float()
-        targets = [(target_data[:,:3], target_mask[:,0]),(target_data[:,3:], target_mask[:,1])] # TO-DO don't hard code this
+        targets = [(target_data[:,:self.num_children], target_mask[:,0]),(target_data[:,self.num_children:], target_mask[:,1])]
 
         # ===================================================================================================
         # Network Forward Pass
@@ -203,7 +198,7 @@ class JetReconstructionNetwork(pl.LightningModule):
         source_data, source_mask, target_data, target_mask = batch
         # process  
         source_data = source_data.float()
-        targets = [(target_data[:,:3], target_mask[:,0]),(target_data[:,3:], target_mask[:,1])] # TO-DO don't hard code this
+        targets = [(target_data[:,:self.num_children], target_mask[:,0]),(target_data[:,self.num_children:], target_mask[:,1])]
 
         jet_predictions, particle_scores = self.predict_jets_and_particle_scores(source_data, source_mask)
 

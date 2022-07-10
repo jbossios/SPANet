@@ -81,14 +81,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         return sum(results) / len(self.training_dataset.unordered_event_transpositions)
 
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_nb: int) -> Dict[str, Tensor]:
-        # (source_data, source_mask), *targets = batch
-        source_data, source_mask, target_data, target_mask = batch
-        # process  
-        source_data = source_data.float()
-        targets = [(target_data[:,:3], target_mask[:,0]),(target_data[:,3:], target_mask[:,1])]
-
-        # targets = target_data
-        print(self.event_permutation_tensor.cpu().numpy())
+        (source_data, source_mask), *targets = batch
 
         # ===================================================================================================
         # Network Forward Pass

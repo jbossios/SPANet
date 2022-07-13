@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelSummary, EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 
 # spanet imports
 from spanet import Options

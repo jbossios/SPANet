@@ -37,12 +37,21 @@ try:
 except RuntimeError:
     pass
 
-
-
 def main():
 
     # user options
     ops = options() 
+
+    if ops.pipeline:
+
+        # set things for pipelines
+        os.system('cp /secret/krb-secret-vol/krb5cc_1000 /tmp/krb5cc_1000')
+        os.system('chmod 600 /tmp/krb5cc_1000')
+        os.system('cp /secret/krb-secret-vol/krb5cc_1000 /tmp/krb5cc_0')
+        os.system('chmod 600 /tmp/krb5cc_0')
+
+        import sys
+        sys.path.insert(1, '/eos/atlas/atlascerngroupdisk/phys-susy/RPV_mutlijets_ANA-SUSY-2019-24/spanet_jona/SPANET_package_kubeflow/SPANet/')
     
     # decide on device --> NOT CURRENTLY USED
     # device = ops.device 
@@ -95,6 +104,7 @@ def options():
     parser.add_argument('-v', "--version", default="0", help="Production version")
     parser.add_argument('--minJetPt', default=50, type=int, help="Minimum selected jet pt")
     parser.add_argument('--maxNjets', default=8, type=int, help="Maximum number of leading jets retained in h5 files")
+    parser.add_argument('--pipeline', action="store_true", help="Copy Kerberos secret and get spanet from EOS.")
     parser.add_argument('--doSystematics', action="store_true", help="Create h5 files for systematic trees.")
     parser.add_argument('--doOverwrite', action="store_true", help="Overwrite already existing files.")
     return parser.parse_args()

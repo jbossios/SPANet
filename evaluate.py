@@ -133,7 +133,7 @@ def evaluate(config):
     ops = options()
 
     # make output file name
-    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"])).replace(".root",f"_{config['tag']}_spanet.h5")
+    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"])).replace(".root" if config["inFileName"].endswith(".root") else ".h5",f"_{config['tag']}_spanet.h5")
     if os.path.isfile(outFileName) and not ops.doOverwrite:
         log.info(f"File already exists not evaluating on: {outFileName}")
         return
@@ -158,55 +158,74 @@ def evaluate(config):
             log.info(f"Evaluationg {treeName}")
 
             # load data
-            with uproot.open(config["inFileName"]) as f:
-                tree = f[treeName]
+            kinem = {}
+            if config["inFileName"].endswith(".root"):
+                with uproot.open(config["inFileName"]) as f:
+                    tree = f[treeName]
 
-                # pick up kinematics
-                kinem = {}
-                for key in ["e","pt","eta","phi"]:
-                    kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets) # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
-                
-                jet_selection = np.expand_dims(np.ones(kinem["pt"].shape),-1)
-                jet_selection = append_jet_selection(jet_selection, kinem["pt"] >= ops.minJetPt)
-                # apply final jet selection
-                jet_selection = jet_selection.astype(bool)
-                for key in kinem.keys():
-                    kinem[key][~jet_selection[:,:,-1]] = 0
+                    # pick up kinematics
+                    for key in ["e","pt","eta","phi"]:
+                        kinem[key] = loadBranchAndPad(tree[f"jet_{key}"], ops.maxNjets) # need to apply njet, jet pt cuts --> cuts is the biggest anoyance here
+                        
+                    # jet_selection = np.expand_dims(np.ones(kinem["pt"].shape),-1)
+                    # jet_selection = append_jet_selection(jet_selection, kinem["pt"] >= ops.minJetPt)
+                    # # apply final jet selection
+                    # jet_selection = jet_selection.astype(bool)
+                    # for key in kinem.keys():
+                    #     kinem[key][~jet_selection[:,:,-1]] = 0
 
-                # compute mass
-                kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
-                kinem["py"] = kinem["pt"] * np.sin(kinem["phi"])
-                kinem["pz"] = kinem["pt"] * np.sinh(kinem["eta"])
-                # negatives can happen from slight numerical impression I think
+                    # compute mass
+                    # kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
+                    # kinem["py"] = kinem["pt"] * np.sin(kinem["phi"])
+                    # kinem["pz"] = kinem["pt"] * np.sinh(kinem["eta"])
+                    # # negatives can happen from slight numerical impression I think
+                    # kinem["mass"] =  np.nan_to_num(np.sqrt(kinem["e"]**2 - kinem["px"]**2 - kinem["py"]**2 - kinem["pz"]**2),0)
+                    source_mask = (kinem["pt"] != 0)
+            elif config["inFileName"].endswith(".h5"):
+                with h5py.File(config["inFileName"],"r") as f:
+                    for key in ["pt","eta","phi","mass"]:
+                        kinem[key] = np.array(f[f'source/{key}'])
+                    source_mask = np.array(f['source/mask'])
+
+            # compute additional variables
+            kinem["px"] = kinem["pt"] * np.cos(kinem["phi"])
+            kinem["py"] = kinem["pt"] * np.sin(kinem["phi"])
+            kinem["pz"] = kinem["pt"] * np.sinh(kinem["eta"])
+            if "mass" not in kinem.keys():
                 kinem["mass"] =  np.nan_to_num(np.sqrt(kinem["e"]**2 - kinem["px"]**2 - kinem["py"]**2 - kinem["pz"]**2),0)
+            if "e" not in kinem.keys():
+                kinem["e"] = np.sqrt(kinem["mass"]**2 + kinem["px"]**2 + kinem["py"]**2 + kinem["pz"]**2)
 
-                # convert to tensors
-                for key, val in kinem.items():
-                    kinem[key] = torch.Tensor(val)
+            # convert to tensors
+            for key, val in kinem.items():
+                kinem[key] = torch.Tensor(val)
+            source_mask = torch.Tensor(source_mask).bool()
 
-                # construct source
-                source_mask = (kinem["pt"] != 0).bool()
-                source_data = {}
-                features = []
+            # construct source
+            #source_mask = (kinem["pt"] != 0).bool()
+            print(source_mask.shape)
+            source_data = {}
+            features = []
 
-                # log data if desired
-                for index, (feature, normalize, log_transform) in enumerate(event_info.source_features):
-                    source_data[feature] = kinem[feature]
-                    features.append(feature)
-                    if log_transform:
-                        source_data[feature] = torch.log(torch.clamp(source_data[feature], min=1e-6)) * source_mask
-                    if normalize:
-                        mean = float(getattr(model_options,f"{feature}_mean"))
-                        std = float(getattr(model_options,f"{feature}_std"))
-                        log.debug(f"{feature} mean {mean}, std {std}")
-                        source_data[feature] = (source_data[feature] - mean) / std * source_mask
+            # log data if desired
+            for index, (feature, normalize, log_transform) in enumerate(event_info.source_features):
+                source_data[feature] = kinem[feature]
+                features.append(feature)
+                if log_transform:
+                    source_data[feature] = torch.log(torch.clamp(source_data[feature], min=1e-6)) * source_mask
+                if normalize:
+                    mean = float(getattr(model_options,f"{feature}_mean"))
+                    std = float(getattr(model_options,f"{feature}_std"))
+                    log.debug(f"{feature} mean {mean}, std {std}")
+                    source_data[feature] = (source_data[feature] - mean) / std * source_mask
+                print(feature, source_data[feature].shape)
 
-                # make input data
-                source_data = torch.stack([source_data[feature] for feature in features],-1)
-                log.debug(f"Source data {source_data.shape}, mask {source_mask.shape}")
+            # make input data
+            source_data = torch.stack([source_data[feature] for feature in features],-1)
+            log.info(f"Source data {source_data.shape}, mask {source_mask.shape}")
 
-                # prepare four momenta to be used with predictions
-                mom = torch.stack([kinem[key] for key in ["e","px","py","pz"]],-1)
+            # prepare four momenta to be used with predictions
+            mom = torch.stack([kinem[key] for key in ["e","px","py","pz"]],-1)
 
             if source_data.shape[0] == 0:
                 log.info(f"File has no events after selections: {config['inFileName']}")

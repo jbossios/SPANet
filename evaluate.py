@@ -17,6 +17,16 @@ import sys
 import h5py
 import awkward as ak
 
+# multiprocessing
+import torch.multiprocessing as mp
+try:
+    mp.set_start_method('spawn', force=True)
+    #mp.set_start_method('forkserver', force=True)
+except RuntimeError:
+    print("Could not set multiprocessing to spawn")
+    exit()
+    #pass
+
 # SOME HACK ON mac
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
@@ -31,11 +41,13 @@ logging.basicConfig(format='%(levelname)s: %(message)s', level='INFO')
 log = logging.getLogger('evaluate')
 
 # multiprocessing
-import torch.multiprocessing as mp
-try:
-    mp.set_start_method('spawn')
-except RuntimeError:
-    pass
+# import torch.multiprocessing as mp
+# mp.set_start_method('spawn')
+# try:
+#     mp.set_start_method('spawn')
+# except RuntimeError:
+#     log.info("Could not set multiprocessing to spawn")
+#     pass
 
 def main():
 
@@ -73,6 +85,18 @@ def main():
     # make output dir
     if not os.path.isdir(ops.outDir):
         os.makedirs(ops.outDir)
+    
+    # Load the options that were used for this run and set the testing-dataset value
+    # model_options = Options.load(f"{ops.log_directory}/options.json")
+    # # get from event info
+    # event_info = EventInfo.read_from_ini(model_options.event_info_file)
+
+    # # Create model and disable all training operations for speed
+    # model = JetReconstructionNetwork(model_options)
+
+    # # Load the best-performing checkpoint on validation data
+    # checkpoint = torch.load(sorted(glob(f"{ops.log_directory}/checkpoints/epoch*"))[-1], map_location='cpu')["state_dict"]
+    # model.load_state_dict(checkpoint)
 
     # create evaluation job dictionaries
     config  = []
@@ -133,7 +157,11 @@ def evaluate(config):
     ops = options()
 
     # make output file name
-    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"])).replace(".root" if config["inFileName"].endswith(".root") else ".h5",f"_{config['tag']}_spanet.h5")
+    outFileName = os.path.join(ops.outDir, os.path.basename(config["inFileName"]))
+    if config["inFileName"].endswith(".root"):
+        outFileName = outFileName.replace(".root",f"_{config['tag']}_spanet.h5")
+    elif config["inFileName"].endswith(".h5"):
+        outFileName = outFileName.replace(".h5",f"_spanet.h5")
     if os.path.isfile(outFileName) and not ops.doOverwrite:
         log.info(f"File already exists not evaluating on: {outFileName}")
         return
@@ -231,15 +259,28 @@ def evaluate(config):
                 log.info(f"File has no events after selections: {config['inFileName']}")
                 return
             
-            N = source_data.shape[0]
-            predictions, classifications = model.predict_jets_and_particles(source_data=source_data[:N], source_mask=source_mask[:N])
-            predictions = np.stack(predictions,1)
+            N = 10000 #source_data.shape[0]
+            iN = int(np.ceil(source_data.shape[0]/N))
+            NEvents = int(iN*N)
+            predictions = [] #, classificiations = [], []
+            for i in range(iN): #source_data.shape[0]):
+                start = int(i*N)
+                end = start + N
+                #print(start,end)
+                source_data_temp = source_data[start:end]
+                source_mask_temp = source_mask[start:end]
+                preds, clas = model.predict_jets_and_particles(source_data=source_data_temp, source_mask=source_mask_temp)
+                predictions.append(np.stack(preds,1))
+                #classificiations.append(clas)
+            #print([i.shape for i in predictions])
+            predictions = np.concatenate(predictions)
+            #print(predictions.shape)
             log.debug(f"Predictions {predictions.shape}, Four-momenta {mom.shape}")
 
             # get masses
-            mom_temp = np.expand_dims(mom,1)[:N] # go to (nEvents,1,nJets,4-mom)
+            mom_temp = np.expand_dims(mom,1)[:NEvents] # go to (nEvents,1,nJets,4-mom)
             predictions_temp = np.repeat(np.expand_dims(predictions,-1),mom.shape[-1],-1) # go to (nEvents, nGluinos, nGluinoChildre, 4-mom)
-            log.debug(f"After reshapes: Predictions {predictions.shape}, Four-momenta {mom.shape}")
+            log.info(f"After reshapes: Predictions {predictions_temp.shape}, Four-momenta {mom_temp.shape}")
             m = np.take_along_axis(mom_temp,predictions_temp,2).sum(2) # take along nJet axis and sum along axis to get (nEvents, nGluino, 4-mom)
             m = np.sqrt(m[:,:,0]**2 - m[:,:,1]**2 - m[:,:,2]**2 - m[:,:,3]**2) # compute mass
             del mom_temp, predictions_temp

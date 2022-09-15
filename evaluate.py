@@ -95,8 +95,6 @@ def create_hdf5_output(output_file: str,
                        dataset: JetReconstructionDataset,
                        full_predictions: Array,
                        full_classifications: Array):
-    if os.path.isfile(output_file): # if output file exists, remove it before creating a new one
-        os.system('rm {output_file}')
     print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
         output.create_dataset(f"source/mask", data=dataset.source_mask)

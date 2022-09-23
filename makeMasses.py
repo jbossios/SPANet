@@ -1,10 +1,16 @@
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
+
+parser = argparse.ArgumentParser(usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)    
+parser.add_argument("-x", "--xFile", help="Data file.", default=None, required=True)
+parser.add_argument("-y", "--yFile", help="Prediction file.", default=None, required=True)
+ops = parser.parse_args()
 
 # prepare e,px,py,pz
 xFile = "user.abadea.512946.e8448_e7400_s3126_r10724_r10726_p5083.30449056._000001.trees_SRRPV_minJetPt20_minNjets10_maxNjets15_RDR_dr_v01.h5"
-with h5py.File(xFile, "r") as hf:
+with h5py.File(ops.xFile, "r") as hf:
 	x = np.stack([np.array(hf[f'source/{key}']) for key in ["pt","eta","phi","mass"]],-1)
 
 px = x[:,:,0] * np.cos(x[:,:,2])
@@ -16,7 +22,7 @@ print(x.shape)
 
 # load labels
 yFile = "user.abadea.512946.e8448_e7400_s3126_r10724_r10726_p5083.30449056._000001.trees_SRRPV_minJetPt20_minNjets10_maxNjets15_RDR_dr_v01_spanet.h5"
-with h5py.File(yFile, "r") as hf:
+with h5py.File(ops.yFile, "r") as hf:
 	g1 = np.stack([np.array(hf[f'g1/q{key}']) for key in range(1,6)],-1)
 	g2 = np.stack([np.array(hf[f'g2/q{key}']) for key in range(1,6)],-1)
 	print(g1.shape, g2.shape)

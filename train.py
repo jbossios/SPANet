@@ -106,7 +106,7 @@ def main(event_file: str,
     # Create the checkpoint for this training run. We will save the best validation networks based on 'accuracy'
     checkpoint_callback = ModelCheckpoint(verbose=options.verbose_output,
                                           monitor='validation_accuracy',
-                                          save_top_k=1,
+                                          save_top_k=10,
                                           mode='max',
                                           save_last=True)
 
@@ -117,7 +117,7 @@ def main(event_file: str,
                          max_epochs=options.epochs,
                          callbacks=[checkpoint_callback, learning_rate_callback],
                          resume_from_checkpoint=checkpoint,
-                         distributed_backend=distributed_backend,
+                         # distributed_backend=distributed_backend,
                          gpus=options.num_gpu if options.num_gpu > 0 else None,
                          track_grad_norm=2 if options.verbose_output else -1,
                          gradient_clip_val=options.gradient_clip,

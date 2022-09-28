@@ -38,7 +38,7 @@ g2m = np.sqrt(g2m[:,0]**2 - g2m[:,1]**2 - g2m[:,2]**2 - g2m[:,3]**2)
 print(g1m.shape, g2m.shape)
 
 # plot
-bins = np.linspace(0, 5000, 50)
+bins = np.linspace(0, 8000, 50)
 plt.hist(g1m, bins=bins, histtype="step", color="blue", label="gluino 1")
 plt.hist(g2m, bins=bins, histtype="step", color="red", label="gluino 2")
 plt.legend()

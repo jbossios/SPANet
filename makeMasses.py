@@ -28,18 +28,28 @@ with h5py.File(ops.yFile, "r") as hf:
 	print(g1.shape, g2.shape)
 
 # pickup correct jets and sum
-g1m = np.take_along_axis(x, np.expand_dims(g1,-1).repeat(4,-1), 1).sum(1)
-g2m = np.take_along_axis(x, np.expand_dims(g2,-1).repeat(4,-1), 1).sum(1)
-print(g1m.shape, g2m.shape)
+g1p = np.take_along_axis(x, np.expand_dims(g1,-1).repeat(4,-1), 1)
+g2p = np.take_along_axis(x, np.expand_dims(g2,-1).repeat(4,-1), 1)
 
-# create masses
+# create gluino masses
+g1m = g1p.sum(1)
+g2m = g2p.sum(1)
 g1m = np.sqrt(g1m[:,0]**2 - g1m[:,1]**2 - g1m[:,2]**2 - g1m[:,3]**2)
 g2m = np.sqrt(g2m[:,0]**2 - g2m[:,1]**2 - g2m[:,2]**2 - g2m[:,3]**2)
 print(g1m.shape, g2m.shape)
+
+# create neutralino masses
+neum = np.stack([g1p[:,[2,3,4]],g2p[:,[2,3,4]]],1).sum(2)
+neum = np.sqrt(neum[:,:,0]**2 - neum[:,:,1]**2 - neum[:,:,2]**2 - neum[:,:,3]**2)
+print(neum.shape)
 
 # plot
 bins = np.linspace(0, 8000, 50)
 plt.hist(g1m, bins=bins, histtype="step", color="blue", label="gluino 1")
 plt.hist(g2m, bins=bins, histtype="step", color="red", label="gluino 2")
+plt.hist(neum[:,0].flatten(), bins=bins, histtype="step", color="blue", label="neutralino 1", ls="--")
+plt.hist(neum[:,1].flatten(), bins=bins, histtype="step", color="red", label="neutralino 2", ls="--")
 plt.legend()
+plt.ylabel("Number of Objects")
+plt.xlabel("Mass [GeV]")
 plt.show()

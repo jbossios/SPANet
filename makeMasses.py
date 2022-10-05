@@ -44,7 +44,7 @@ neum = np.sqrt(neum[:,:,0]**2 - neum[:,:,1]**2 - neum[:,:,2]**2 - neum[:,:,3]**2
 print(neum.shape)
 
 # plot
-bins = np.linspace(0, 8000, 50)
+bins = np.linspace(0, 3500, 50)
 plt.hist(g1m, bins=bins, histtype="step", color="blue", label="gluino 1")
 plt.hist(g2m, bins=bins, histtype="step", color="red", label="gluino 2")
 plt.hist(neum[:,0].flatten(), bins=bins, histtype="step", color="blue", label="neutralino 1", ls="--")

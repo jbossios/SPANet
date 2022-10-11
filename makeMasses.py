@@ -6,10 +6,10 @@ import argparse
 parser = argparse.ArgumentParser(usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)    
 parser.add_argument("-x", "--xFile", help="Data file.", default=None, required=True)
 parser.add_argument("-y", "--yFile", help="Prediction file.", default=None, required=True)
+parser.add_argument("--model", help="2x3 or 2x5", default=None, required=True)
 ops = parser.parse_args()
 
 # prepare e,px,py,pz
-xFile = "user.abadea.512946.e8448_e7400_s3126_r10724_r10726_p5083.30449056._000001.trees_SRRPV_minJetPt20_minNjets10_maxNjets15_RDR_dr_v01.h5"
 with h5py.File(ops.xFile, "r") as hf:
 	x = np.stack([np.array(hf[f'source/{key}']) for key in ["pt","eta","phi","mass"]],-1)
 
@@ -21,10 +21,10 @@ x = np.stack([e,px,py,pz],-1)
 print(x.shape)
 
 # load labels
-yFile = "user.abadea.512946.e8448_e7400_s3126_r10724_r10726_p5083.30449056._000001.trees_SRRPV_minJetPt20_minNjets10_maxNjets15_RDR_dr_v01_spanet.h5"
+nq = 5 if ops.model == "2x5" else 3
 with h5py.File(ops.yFile, "r") as hf:
-	g1 = np.stack([np.array(hf[f'g1/q{key}']) for key in range(1,6)],-1)
-	g2 = np.stack([np.array(hf[f'g2/q{key}']) for key in range(1,6)],-1)
+	g1 = np.stack([np.array(hf[f'g1/q{key}']) for key in range(1,nq+1)],-1)
+	g2 = np.stack([np.array(hf[f'g2/q{key}']) for key in range(1,nq+1)],-1)
 	print(g1.shape, g2.shape)
 
 # pickup correct jets and sum
@@ -38,17 +38,17 @@ g1m = np.sqrt(g1m[:,0]**2 - g1m[:,1]**2 - g1m[:,2]**2 - g1m[:,3]**2)
 g2m = np.sqrt(g2m[:,0]**2 - g2m[:,1]**2 - g2m[:,2]**2 - g2m[:,3]**2)
 print(g1m.shape, g2m.shape)
 
-# create neutralino masses
-neum = np.stack([g1p[:,[2,3,4]],g2p[:,[2,3,4]]],1).sum(2)
-neum = np.sqrt(neum[:,:,0]**2 - neum[:,:,1]**2 - neum[:,:,2]**2 - neum[:,:,3]**2)
-print(neum.shape)
-
 # plot
 bins = np.linspace(0, 3500, 50)
 plt.hist(g1m, bins=bins, histtype="step", color="blue", label="gluino 1")
 plt.hist(g2m, bins=bins, histtype="step", color="red", label="gluino 2")
-plt.hist(neum[:,0].flatten(), bins=bins, histtype="step", color="blue", label="neutralino 1", ls="--")
-plt.hist(neum[:,1].flatten(), bins=bins, histtype="step", color="red", label="neutralino 2", ls="--")
+# create neutralino masses
+if ops.model =="2x5":
+        neum = np.stack([g1p[:,[2,3,4]],g2p[:,[2,3,4]]],1).sum(2)
+        neum = np.sqrt(neum[:,:,0]**2 - neum[:,:,1]**2 - neum[:,:,2]**2 - neum[:,:,3]**2)
+        print(neum.shape)
+        plt.hist(neum[:,0].flatten(), bins=bins, histtype="step", color="blue", label="neutralino 1", ls="--")
+        plt.hist(neum[:,1].flatten(), bins=bins, histtype="step", color="red", label="neutralino 2", ls="--")
 plt.legend()
 plt.ylabel("Number of Objects")
 plt.xlabel("Mass [GeV]")

@@ -10,6 +10,7 @@ import os
 from glob import glob
 import h5py
 from numpy import ndarray as Array
+import numpy as np
 
 # multiprocessing
 import torch.multiprocessing as mp
@@ -91,22 +92,24 @@ def handleInput(data):
         return sorted(glob(data))
     return []
 
-def create_hdf5_output(output_file: str,
+def create_hdf5_output(input_file: str,
+                       output_file: str,
                        dataset: JetReconstructionDataset,
                        full_predictions: Array,
                        full_classifications: Array):
 
     # compute masses
-    px = dataset.source_data[:,:,1] * np.cos(dataset.source_data[:,:,3])
-    py = dataset.source_data[:,:,1] * np.sin(dataset.source_data[:,:,3])
-    pz = dataset.source_data[:,:,1] * np.sinh(dataset.source_data[:,:,2])
-    e = np.sqrt(dataset.source_data[:,:,0]**2 + px**2 + py**2 + pz**2) # m^2 + p^2
+    with h5py.File(input_file, "r") as hf:
+        x = np.stack([np.array(hf[f'source/{key}']) for key in ["pt","eta","phi","mass"]],-1)
+    px = x[:,:,0] * np.cos(x[:,:,2])
+    py = x[:,:,0] * np.sin(x[:,:,2])
+    pz = x[:,:,0] * np.sinh(x[:,:,1])
+    e = np.sqrt(x[:,:,3]**2 + px**2 + py**2 + pz**2) # m^2 + p^2
     x = np.stack([e,px,py,pz],-1)
-    print(x.shape)
 
     # pick up predictions
-    g1 = np.stack([np.array(full_predictions[0][:,k]) for key in range(1,full_predictions[0].shape[1])],-1)
-    g2 = np.stack([np.array(full_predictions[1][:,k]) for key in range(1,full_predictions[0].shape[1])],-1)
+    g1 = np.stack([np.array(full_predictions[0][:,k]) for k in range(full_predictions[0].shape[1])],-1)
+    g2 = np.stack([np.array(full_predictions[1][:,k]) for k in range(full_predictions[0].shape[1])],-1)
     # pickup correct jets and sum
     g1p = np.take_along_axis(x, np.expand_dims(g1,-1).repeat(4,-1), 1)
     g2p = np.take_along_axis(x, np.expand_dims(g2,-1).repeat(4,-1), 1)
@@ -115,21 +118,28 @@ def create_hdf5_output(output_file: str,
     g2m = g2p.sum(1)
     g1m = np.sqrt(g1m[:,0]**2 - g1m[:,1]**2 - g1m[:,2]**2 - g1m[:,3]**2)
     g2m = np.sqrt(g2m[:,0]**2 - g2m[:,1]**2 - g2m[:,2]**2 - g2m[:,3]**2)
-    print(g1m.shape, g2m.shape)
+    gluino_mass_pred = np.stack([g1m, g2m], -1)
+    # create neutralino masses
+    neutralino_mass_pred = None
+    if full_predictions[0].shape[1] == 5:
+        neutralino_mass_pred = np.stack([g1p[:,[2,3,4]],g2p[:,[2,3,4]]],1).sum(2)
+        neutralino_mass_pred = np.sqrt(neutralino_mass_pred[:,:,0]**2 - neutralino_mass_pred[:,:,1]**2 - neutralino_mass_pred[:,:,2]**2 - neutralino_mass_pred[:,:,3]**2)
 
     print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
         output.create_dataset(f"source/mask", data=dataset.source_mask)
         for i, (feature_name, _, _) in enumerate(dataset.event_info.source_features):
-            print(f"source/{feature_name}", dataset.source_data[:, :, i].shape)
             output.create_dataset(f"source/{feature_name}", data=dataset.source_data[:, :, i])
 
         for i, (particle_name, (jets, _)) in enumerate(dataset.event_info.targets.items()):
-            print(f"{particle_name}/mask", full_classifications[i].shape)
             output.create_dataset(f"{particle_name}/mask", data=full_classifications[i])
             for k, jet_name in enumerate(jets):
-                print(f"{particle_name}/{jet_name}", full_predictions[i][:, k].shape)
                 output.create_dataset(f"{particle_name}/{jet_name}", data=full_predictions[i][:, k])
+        
+        # save mass predictions
+        output.create_dataset("gluino_mass_pred", data=gluino_mass_pred)
+        if neutralino_mass_pred is not None:
+            output.create_dataset("neutralino_mass_pred", data=neutralino_mass_pred)
 
 def evaluate(c):
     ''' perform the full model evaluation '''
@@ -137,8 +147,7 @@ def evaluate(c):
     print(f"Evaluating on {c['test_file']}")
     model = load_model(c["log_dir"], c["test_file"], c["EVENT_FILE"], c["batch_size"], c["gpu"], num_workers = 0)
     full_predictions, full_classifications, *_ = predict_on_test_dataset(model, c["gpu"])
-    # print(model.testing_dataset.source_data.shape, )
-    create_hdf5_output(c["output_file"], model.testing_dataset, full_predictions, full_classifications)  
+    create_hdf5_output(c["test_file"], c["output_file"], model.testing_dataset, full_predictions, full_classifications)  
 
 
 if __name__ == "__main__":

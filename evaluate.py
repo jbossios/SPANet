@@ -101,6 +101,8 @@ def create_hdf5_output(input_file: str,
     # compute masses
     with h5py.File(input_file, "r") as hf:
         x = np.stack([np.array(hf[f'source/{key}']) for key in ["pt","eta","phi","mass"]],-1)
+        normweight = np.array(hf['EventVars/normweight'])
+
     px = x[:,:,0] * np.cos(x[:,:,2])
     py = x[:,:,0] * np.sin(x[:,:,2])
     pz = x[:,:,0] * np.sinh(x[:,:,1])
@@ -137,6 +139,7 @@ def create_hdf5_output(input_file: str,
                 output.create_dataset(f"{particle_name}/{jet_name}", data=full_predictions[i][:, k])
         
         # save mass predictions
+        output.create_dataset("normweight", data=normweight)
         output.create_dataset("gluino_mass_pred", data=gluino_mass_pred)
         if neutralino_mass_pred is not None:
             output.create_dataset("neutralino_mass_pred", data=neutralino_mass_pred)
